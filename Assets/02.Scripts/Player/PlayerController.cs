@@ -18,7 +18,7 @@ public class PlayerController : MonoBehaviour
     private bool isGrounded;
     private bool jumpPressed;
 
-    private Rigidbody2D rb;
+    public Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
 
     private bool isDamaged;
@@ -98,5 +98,10 @@ public class PlayerController : MonoBehaviour
         gameObject.layer = 7;
         //색상 원상 복구
         spriteRenderer.color = new Color(1, 1, 1, 1f);
+    }
+    //죽음
+    public void Die()
+    {
+
     }
 }
