@@ -16,6 +16,7 @@ public class PlayerController : MonoBehaviour
 
     [Header("Dash")]
     [SerializeField] private float dashPower = 5.0f;
+    [SerializeField] private float dashingTime = 0.2f;
     [SerializeField] private float dashCoolDown = 1f;
 
     //이동 관련
@@ -25,7 +26,7 @@ public class PlayerController : MonoBehaviour
 
     //대쉬 관련
     public bool unLockedDash;
-    private bool isAbleDash;
+    private bool isAbleDash = true;
     private bool isDashing;
 
     private Rigidbody2D rb;
@@ -52,6 +53,8 @@ public class PlayerController : MonoBehaviour
         {
             jumpPressed = true;
         }
+        Jump();
+        OnDash();
     }
     private void FixedUpdate()
     {
@@ -59,9 +62,7 @@ public class PlayerController : MonoBehaviour
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
 
         Move();
-        Jump();
         Flip();
-        OnDash();
     }
     //좌우 반전
     private void Flip()
@@ -130,9 +131,11 @@ public class PlayerController : MonoBehaviour
     //대쉬 입력
     private void OnDash()
     {
-        if(isAbleDash && unLockedDash)
+        if (isDashing) { return; }
+
+        if (unLockedDash)
         {
-            if (Input.GetKeyDown(KeyCode.LeftShift))
+            if(Input.GetKeyDown(KeyCode.LeftShift) && isAbleDash)
             {
                 StartCoroutine(Dash());
             }
@@ -149,17 +152,19 @@ public class PlayerController : MonoBehaviour
         //원본 중력값 백업
         var oringnalGravity = rb.gravityScale;
         //중력 = 0;
-        rb.gravityScale = 0;
+        rb.gravityScale = 0f;
         //잔상 만들기
-        this.ghost.makeGhost = true;
-        rb.velocity = new Vector2(transform.localScale.x * dashPower, 0);
+        //this.ghost.makeGhost = true;
+        rb.velocity = new Vector2(transform.localScale.x * dashPower, 0f);
+        yield return new WaitForSeconds(dashingTime);
         isDashing = false;
         //잔상 끝
-        this.ghost.makeGhost = false;
+        //this.ghost.makeGhost = false;
         //중력 초기화
         rb.gravityScale = oringnalGravity;
         //행동 불가
         rb.velocity = new Vector2(0, 0);
+        Debug.Log("중력 값" + rb.gravityScale);
         yield return new WaitForSeconds(dashCoolDown);
         isAbleDash = true;
 

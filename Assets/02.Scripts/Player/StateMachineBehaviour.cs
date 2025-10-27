@@ -33,3 +33,6 @@ public abstract class StateMachineBehaviour : ScriptableObject
         //상태 머신을 빠져나갈 때 호출 
     }
 }
+
+
+
