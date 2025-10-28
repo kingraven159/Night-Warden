@@ -12,20 +12,20 @@ public class PlayerData : ScriptableObject
     public float fallGravityMult;   //추락할때 추락 속도의 곱 
     public float maxFallSpeed;      //추락하는 최고속도
     [Space(5)]
-    public float fastGravityMult;   //더욱 빠르게 추락하는 속도의 곱
+    public float fastFallGravityMult;   //더욱 빠르게 추락하는 속도의 곱
     public float maxFastFallSpeed;  //추락속도의 최고 속도
 
     [Space(20)]
 
     [Header("Run")]
     public float runMaxSpeed;                      //최고속도
-    public float runAcceleration;                  //가속도
+    public float runAcceleration;                  //가속
     [HideInInspector]public float runAccelAmount;  
-    public float runDecceleration;                 //-가속도
+    public float runDecceleration;                 //감속
     [HideInInspector]public float runDeccelAmount;
     [Space(5)]
-    [Range(0f, 1)] public float accelInAir;        //에어본
-    [Range(0f, 1)] public float deccelInAir;       //
+    [Range(0f, 1)] public float accelInAir;        //공중에서 가속
+    [Range(0f, 1)] public float deccelInAir;       //공중에서 감속
     [Space(5)]
     public bool doConserveMomantum = true;         //운동량 보존
 
@@ -37,7 +37,7 @@ public class PlayerData : ScriptableObject
     [HideInInspector] public float jumpForce; //점프 힘
 
     [Header("Double Jump")]
-    public float jumpCutGravity;                      //추락으로 인해 중력이 증가할 때 점프시 중력을 초기화
+    public float jumpCutGravityMult;                      //추락으로 인해 중력이 증가할 때 점프시 중력을 초기화
     [Range(0f, 1f)] public float jumpHangGravityMult; //점프 
     public float jumpHangTimeThreshold;               //점프 한계점
     [Space(5)]
@@ -71,7 +71,7 @@ public class PlayerData : ScriptableObject
     [Header("Dash")]
     public int dashAmount;  
     public float dashSpeed;   
-    public float dashCooltime;   //대쉬 쿨타임
+    public float dashFreezeTime;   //대쉬 시 경직 시간
     [Space(5)]
     public float dashAttackTime;
     [Space(5)]

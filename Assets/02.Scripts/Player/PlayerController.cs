@@ -11,6 +11,7 @@ public class PlayerController : MonoBehaviour
     public PlayerData Data;
 
     //상태
+    public bool IsAttachedWall {  get; private set; }
     public bool IsFacingRight {  get; private set; }
     public bool IsJumping { get; private set; }
     public bool IsWallJumping { get; private set; }
@@ -41,8 +42,7 @@ public class PlayerController : MonoBehaviour
     public float LastPressedDashTime { get; private set; }  
 
     //이동 관련
-    private float inputX;
-    private float inputY;
+    private Vector2 moveInput;
     private bool isGrounded;
 
     //점프 관련
@@ -51,7 +51,7 @@ public class PlayerController : MonoBehaviour
 
     //벽점프 관련
     private float wallJumpStartTime;
-    private bool isWallJumping;
+    private int lastWallJumpDir;
 
     //대쉬 관련
     public bool unLockedDash;
@@ -105,18 +105,23 @@ public class PlayerController : MonoBehaviour
         LastPressedDashTime -= Time.deltaTime;
 
 
-        inputX = Input.GetAxisRaw("Horizontal");
-        inputY = Input.GetAxisRaw("Vertical");
+        moveInput.x = Input.GetAxisRaw("Horizontal");
+        moveInput.y = Input.GetAxisRaw("Vertical");
 
+        if (moveInput.x != 0)
+            CheckDirectionToFace(moveInput.x > 0);
+
+        //점프
         if(Input.GetButtonDown("Jump"))
         {
             OnJumpInput();
         }
-
+        //높이 조절
         if(Input.GetButtonUp("Jump"))
         {
             OnJumpUpInput();
         }
+        //대쉬
         if (Input.GetKeyDown(KeyCode.LeftShift))
         {
             OnDashInput();
@@ -128,13 +133,114 @@ public class PlayerController : MonoBehaviour
             {
                 if(LastOnGroundTime < -0.1f)
                 {
-                    AnimationFSM.IdleState = true; 
+                    isFalling = false;
                 }
                 LastOnGroundTime = Data.coyoteTime;
             }
+            if((IsAttachedWall && IsFacingRight)
+                || (IsAttachedWall && IsFacingRight) && IsWallJumping)
+                LastOnWallRightTime = Data.coyoteTime;
+            if((IsAttachedWall && IsFacingRight)
+                || (IsAttachedWall && IsFacingRight) && IsWallJumping)
+                LastOnWallLeftTime = Data.coyoteTime;
+
+            LastOnWallTime = Mathf.Max(LastOnWallLeftTime, LastOnWallRightTime);
+        }
+        if(IsJumping && rb.velocity.y <0)
+        {
+            IsJumping = false;
+
+            isFalling = true;
+        }
+        if(IsWallJumping && Time.time - wallJumpStartTime > Data.wallJumpTime)
+        {
+            IsWallJumping = false;
         }
 
-        Jump();
+        if(!IsDashing)
+        {
+            if(CanJump() && LastOnGroundTime > 0)
+            {
+                IsJumping = true;
+                IsWallJumping = false;
+                isJumpCut = false;
+                isFalling = false;
+                Jump();
+            }
+            else if(CanWallJump() && LastOnGroundTime > 0)
+            {
+                IsWallJumping = true;
+                IsJumping = false;
+                isJumpCut = false;
+                isFalling = false;
+
+                wallJumpStartTime = Time.time;
+                lastWallJumpDir = (LastOnWallRightTime > 0) ? -1 : 1;
+
+                WallJump(lastWallJumpDir);
+            }
+        }
+
+        if (CanDash() && LastOnGroundTime > 0)
+        {
+            Freeze(Data.dashFreezeTime);
+
+            if (moveInput != Vector2.zero)
+                lastDashDir = moveInput;
+            else
+                lastDashDir = IsFacingRight ? Vector2.right : Vector2.left;
+
+            IsDashing = true;
+            IsJumping = false;
+            IsWallJumping = false;
+            isJumpCut = false;
+
+            StartCoroutine(nameof(StartDash), lastDashDir);
+        }
+
+        if (CanSlide() && ((LastOnWallLeftTime > 0 && moveInput.x < 0) || (LastOnWallRightTime > 0 && moveInput.x > 0)))
+            IsSliding = true;
+        else
+            IsSliding = false;
+
+        if (!isDashAttacking)
+        {
+            //높은데서 떨어질때 
+            if (IsSliding)
+            {
+                SetGravityScale(0);
+            }
+            else if (rb.velocity.y < 0 && moveInput.y < 0)
+            {
+                //중력 스케일을 더 크게 적용
+                SetGravityScale(Data.gravityScale * Data.fastFallGravityMult);
+                //떨어지는 최고 속도 
+                rb.velocity = new Vector2(rb.velocity.x, Mathf.Max(rb.velocity.y, -Data.maxFastFallSpeed));
+            }
+            else if (isJumpCut)
+            {
+                SetGravityScale(Data.gravityScale * Data.jumpCutGravityMult);
+            }
+            else if ((IsJumping || IsWallJumping || isFalling) && Mathf.Abs(rb.velocity.y) < Data.jumpHangTimeThreshold)
+            {
+                SetGravityScale(Data.gravityScale * Data.jumpHangGravityMult);
+            }
+            else if(rb.velocity.y < 0)
+            {
+                SetGravityScale(Data.gravityScale);
+
+                rb.velocity = new Vector2(rb.velocity.x, Mathf.Max(rb.velocity.y, -Data.maxFallSpeed));
+            }
+            else
+            {
+                SetGravityScale(Data.gravityScale);
+            }
+        }
+        else
+        {
+            SetGravityScale(0);
+        }
+
         AnimationCondtion();
     }
     private void FixedUpdate()
@@ -142,32 +248,40 @@ public class PlayerController : MonoBehaviour
         //바닥 판정
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
         //벽 판정
-        IsFacingRight = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
+        IsAttachedWall = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
 
         //점프를 하지 않고 바닥에 붙어있을시 코요테 타임
         if(!IsJumping && isGrounded)  
             LastOnGroundTime = Data.coyoteTime;        
-        if (IsFacingRight)
+        if (IsAttachedWall)
             LastOnGroundTime = Data.coyoteTime;
 
-        //벽 점프 중일때
-        if (isWallJumping)
-            Run(Data.wallJumpRunLerp);      
-        else
-            Run(1);
-        
-        //벽 슬라이딩 
+        if (!IsDashing)
+        {
+            //벽 점프 중일때
+            if (IsWallJumping)
+                Run(Data.wallJumpRunLerp);
+            else
+                Run(1);
+        }
+        else if (isDashAttacking)
+        {
+            Run(Data.dashEndRunLerp);
+        }
+            //벽 슬라이딩 
         if (IsSliding)
             Slide();
+        
+        
 
         Attack();
     }
     //좌우 반전
     private void Flip()
     {
-        if(inputX != 0)
+        if(moveInput.x != 0)
         {
-            if(inputX < 0)
+            if(moveInput.x < 0)
             {
                 spriteRenderer.flipX = true;
             }
@@ -196,7 +310,7 @@ public class PlayerController : MonoBehaviour
             accelRate = (Mathf.Abs(runSpeed) > 0.01f) ? Data.runAccelAmount * Data.accelInAir : Data.runDeccelAmount * Data.deccelInAir;
         
         //점프나 추락중일때 
-        if((IsJumping || isWallJumping || isFalling) && Mathf.Abs(rb.velocity.y) < Data.jumpHangTimeThreshold)
+        if((IsJumping || IsWallJumping || isFalling) && Mathf.Abs(rb.velocity.y) < Data.jumpHangTimeThreshold)
         {
             accelRate *= Data.jumpHangAccelerationMult;
             runSpeed *= Data.jumpHangMaxSpeedMult;
@@ -368,9 +482,21 @@ public class PlayerController : MonoBehaviour
         }
     }
     //중력 스케일 세팅
-    public void SetGravityScale(float gravityScale)
+    private void SetGravityScale(float gravityScale)
     {
         rb.gravityScale = gravityScale;
+    }
+    //경직
+    public void Freeze(float duration)
+    {
+        StartCoroutine(nameof(PerformFreeze), duration);
+    }
+    //경직 코루틴
+    private IEnumerator PerformFreeze(float duration)
+    {
+        Time.timeScale = 0;
+        yield return new WaitForSeconds(duration);
+        Time.timeScale = 1;
     }
     //애니메이션 컨티션 값 입력
     private void AnimationCondtion()
@@ -416,15 +542,21 @@ public class PlayerController : MonoBehaviour
     {
         return LastPressedJumpTime > 0 && !IsJumping;
     }
+    //벽 점프
+    private bool CanWallJump()
+    {
+        return LastPressedJumpTime > 0 && LastOnWallTime > 0 && LastOnGroundTime <= 0 && (!IsWallJumping || 
+            (LastOnWallRightTime > 0 && lastWallJumpDir == 1) || (LastOnWallLeftTime > 0 && lastWallJumpDir == -1));
+    }
     //이중 점프 조건
     private bool CanJumpCut()
     {
         return IsJumping && rb.velocity.y > 0;
     }
-    //벽 점프 컷 조건
+    //벽 이중 점프 조건
     private bool CanWallJumpCut()
     {
-        return isWallJumping && rb.velocity.y > 0;
+        return IsWallJumping && rb.velocity.y > 0;
     }
     //대쉬 조건
     private bool CanDash()
