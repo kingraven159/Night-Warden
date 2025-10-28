@@ -4,10 +4,18 @@ using System.Runtime.CompilerServices;
 using UnityEngine;
 using System;
 using Unity.VisualScripting;
+using UnityEditor.Experimental.GraphView;
 
 public class PlayerController : MonoBehaviour
 {
     public PlayerData Data;
+
+    //상태
+    public bool IsFacingRight {  get; private set; }
+    public bool IsJumping { get; private set; }
+    public bool IsWallJumping { get; private set; }
+    public bool IsDashing { get; private set; }
+    public bool IsSliding { get; private set; }
 
     //타이머
     public float LastOnGroundTime {  get; private set; }
@@ -17,8 +25,6 @@ public class PlayerController : MonoBehaviour
 
     [Header("Movement")]
     [SerializeField] private float moveSpeed = 5.0f;
-    [SerializeField] private float jumpForce = 7.0f;
-    [SerializeField] private float maxFallSpeed = 50f;
 
     [Header("GroundCheck")]
     [SerializeField] private Transform groundCheck;
@@ -30,10 +36,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Transform backWallCheckPoint;
     [SerializeField] private Vector2 wallCheckSize = new Vector2(0.5f, 1f);
 
-    [Header("Dash")]
-    [SerializeField] private float dashPower = 10.0f;
-    [SerializeField] private float dashingTime = 0.2f;
-    [SerializeField] private float dashCoolDown = 1f;
+    //마지막에 입력한 시간
+    public float LastPressedJumpTime { get; private set; }
+    public float LastPressedDashTime { get; private set; }  
 
     //이동 관련
     private float inputX;
@@ -42,19 +47,18 @@ public class PlayerController : MonoBehaviour
 
     //점프 관련
     private bool isFalling;
-    private bool jumpPressed;
-    private bool isJumping;
+    private bool isJumpCut;
 
     //벽점프 관련
     private float wallJumpStartTime;
     private bool isWallJumping;
-    private bool isSilding;
-    private bool isFacingRight;
 
     //대쉬 관련
     public bool unLockedDash;
-    private bool isAbleDash = true;
-    private bool isDashing;
+    private int dashesCount;
+    private bool dashRefilling;
+    private Vector2 lastDashDir;
+    private bool isDashAttacking;
 
     //전투 관련
     private bool isDamaged;
@@ -87,20 +91,50 @@ public class PlayerController : MonoBehaviour
     {
         //중력 값 세팅
         SetGravityScale(Data.gravityScale);
-        isFacingRight = true;
+        IsFacingRight = true;
     }
     private void Update()
     {
+        //타이머
+        LastOnGroundTime -= Time.deltaTime;
+        LastOnWallTime -= Time.deltaTime;
+        LastOnWallRightTime -= Time.deltaTime;
+        LastOnWallLeftTime -= Time.deltaTime;
+
+        LastPressedJumpTime -= Time.deltaTime;
+        LastPressedDashTime -= Time.deltaTime;
+
+
         inputX = Input.GetAxisRaw("Horizontal");
         inputY = Input.GetAxisRaw("Vertical");
 
-        if(Input.GetButton("Jump"))
+        if(Input.GetButtonDown("Jump"))
         {
-            jumpPressed = true;
+            OnJumpInput();
+        }
+
+        if(Input.GetButtonUp("Jump"))
+        {
+            OnJumpUpInput();
+        }
+        if (Input.GetKeyDown(KeyCode.LeftShift))
+        {
+            OnDashInput();
+        }
+
+        if (!IsDashing && !IsJumping)
+        {
+            if (isGrounded)
+            {
+                if(LastOnGroundTime < -0.1f)
+                {
+                    AnimationFSM.IdleState = true; 
+                }
+                LastOnGroundTime = Data.coyoteTime;
+            }
         }
 
         Jump();
-        OnDash();
         AnimationCondtion();
     }
     private void FixedUpdate()
@@ -108,24 +142,24 @@ public class PlayerController : MonoBehaviour
         //바닥 판정
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
         //벽 판정
-        isFacingRight = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
+        IsFacingRight = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
 
-        //코요테 타임
-        if(!isJumping && isGrounded)  
+        //점프를 하지 않고 바닥에 붙어있을시 코요테 타임
+        if(!IsJumping && isGrounded)  
             LastOnGroundTime = Data.coyoteTime;        
-        if (isFacingRight)
+        if (IsFacingRight)
             LastOnGroundTime = Data.coyoteTime;
 
-
+        //벽 점프 중일때
         if (isWallJumping)
             Run(Data.wallJumpRunLerp);      
         else
             Run(1);
-
-        if (inSliding)
+        
+        //벽 슬라이딩 
+        if (IsSliding)
             Slide();
 
-        Flip();
         Attack();
     }
     //좌우 반전
@@ -146,30 +180,74 @@ public class PlayerController : MonoBehaviour
     //이동
     private void Run(float lerpAmount)
     {
+        //이동속도
         float runSpeed = moveSpeed * Data.runMaxSpeed;
-
+        //이독속도 스케일
         runSpeed = Mathf.Lerp(rb.velocity.x, runSpeed, lerpAmount);
-
+        //가속도 딜레이
         float accelRate;
 
+        //지상에 있을때
         if (LastOnGroundTime > 0)
+            //이동속도가 0.01f 보다 빠를때 가속하고 아니면 감속
+            accelRate = (Mathf.Abs(runSpeed) > 0.01f) ? Data.runAccelAmount : Data.runDeccelAmount;
+        else
+            //이동속도가 0.01f 보다 빠를때 가속하고 아니면 감속 
+            accelRate = (Mathf.Abs(runSpeed) > 0.01f) ? Data.runAccelAmount * Data.accelInAir : Data.runDeccelAmount * Data.deccelInAir;
+        
+        //점프나 추락중일때 
+        if((IsJumping || isWallJumping || isFalling) && Mathf.Abs(rb.velocity.y) < Data.jumpHangTimeThreshold)
         {
-            accelRate = (Mathf.Abs(runSpeed) > 0.0f) ? Data.run
+            accelRate *= Data.jumpHangAccelerationMult;
+            runSpeed *= Data.jumpHangMaxSpeedMult;
         }
 
+        if(Data.doConserveMomantum && Mathf.Abs(rb.velocity.x) > Mathf.Abs(runSpeed) && Mathf.Sign(rb.velocity.x) == Mathf.Sign(runSpeed) && Mathf.Abs(runSpeed) > 0.01f && LastOnGroundTime < 0)
+        {
+            accelRate = 0;
+        }
 
+        float speedDif = runSpeed - rb.velocity.x;
+        float movement = speedDif * accelRate;
+
+        rb.AddForce(movement * Vector2.right, ForceMode2D.Impulse);
+
+    }
+    //점프 인풋
+    private void OnJumpInput()
+    {
+        //버퍼링 
+        LastPressedJumpTime = Data.jumpInputBufferTime;
+    }
+    //이중 점프 인풋
+    private void OnJumpUpInput()
+    {
+        if (CanJumpCut() || CanWallJumpCut())
+            isJumpCut = true;
+    }
+    //대쉬 인풋
+    private void OnDashInput()
+    {
+        //버퍼링
+        LastPressedDashTime = Data.dashIputBufferTime;
     }
     //점프
     private void Jump()
     {
-        if(jumpPressed && isGrounded)
-        {
-            isJumping = true;
-            rb.velocity = new Vector2(rb.velocity.x, jumpForce);
-        }
-        jumpPressed = false;
-        isJumping=false;
+        LastPressedJumpTime = 0;
+        LastOnGroundTime = 0;
+
+        float jumpForce = Data.jumpForce;
+
+        if(rb.velocity.y < 0)
+            jumpForce -= rb.velocity.y;
+        
+        IsJumping = true;
+        rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+        
+        IsJumping=false;
     }
+    //벽 점프
     private void WallJump(int dir)
     {
         
@@ -209,50 +287,76 @@ public class PlayerController : MonoBehaviour
         spriteRenderer.color = new Color(1, 1, 1, 1f);
         isDamaged = false;
     }
-    //대쉬 입력
-    private void OnDash()
-    {
-        if (isDashing) { return; }
-
-        if (unLockedDash)
-        {
-            if(Input.GetKeyDown(KeyCode.LeftShift) && isAbleDash)
-            {
-                StartCoroutine(Dash());
-            }
-        }
-    }
     //대쉬 코루틴
-    public IEnumerator Dash()
+    public IEnumerator StartDash(Vector2 dir)
     {
+        LastOnGroundTime = 0;
+        LastPressedDashTime = 0;
+
         Debug.Log("Dash");
         Debug.Log("Dash Cool Time Start");
 
-        isAbleDash = false;
-        isDashing = true;
-        //원본 중력값 백업
-        var oringnalGravity = rb.gravityScale;
-        //중력 = 0;
-        rb.gravityScale = 0f;
-        //잔상 만들기
-        rb.velocity = new Vector2(transform.localScale.x * dashPower, 0f);
-        yield return new WaitForSeconds(dashingTime);
-        isDashing = false;
-        //잔상 끝
-        //중력 초기화
-        rb.gravityScale = oringnalGravity;
-        //행동 불가
-        rb.velocity = new Vector2(0, 0);
-        Debug.Log("중력 값" + rb.gravityScale);
-        yield return new WaitForSeconds(dashCoolDown);
-        isAbleDash = true;
+        float startTime = Time.time;
+
+        dashesCount--;
+        //대쉬 공격 활성화
+        isDashAttacking = true;
+
+        //무중력
+        SetGravityScale(0);
+
+        //대쉬공격이 가능한 시간
+        while (Time.time - startTime <= Data.dashAttackTime)
+        {
+            rb.velocity = dir.normalized * Data.dashSpeed;
+            yield return null;
+        }
+
+        startTime = Time.time;
+        isDashAttacking = false;
+
+        //중력스케일 복구
+        SetGravityScale(Data.gravityScale);
+        //대쉬 속도 감소
+        rb.velocity = Data.dashEndSpeed * dir.normalized;
+
+        //대쉬가 끝날때 까지의 시간
+        while (Time.time - startTime <= Data.dashEndTime)
+        {
+            yield return null;
+        }
+
+        //대쉬 끝
+        IsDashing = false;
 
         Debug.Log("Dash Cool Time Finished");
     }
-    //슬라이드
-    private void Silde()
+    //대쉬 리필
+    private IEnumerator RefillDash(int amount)
     {
+        //대쉬 리필 중
+        dashRefilling = true;
+        yield return new WaitForSeconds(Data.dashRefillTime);
+        //대쉬 리필 끝
+        dashRefilling = false;
+        dashesCount = Mathf.Min(Data.dashAmount, dashesCount + 1);
+    }
+    //벽 슬라이드
+    private void Slide()
+    {
+        // y축 속도가 0보다 크면 
+        if(rb.velocity.y >0)
+        {
+            // 
+            rb.AddForce(rb.velocity.y * Vector2.up, ForceMode2D.Impulse);
+        }
 
+        float speedDif = Data.slideSpeed - rb.velocity.y;
+        float movement = speedDif * Data.slideAccel;
+
+        movement = Mathf.Clamp(movement, -Math.Abs(speedDif) * (1 / Time.fixedDeltaTime), Mathf.Abs(speedDif) * (1 / Time.fixedDeltaTime));
+
+        rb.AddForce(movement * Vector2.up);
     }
     //공격
     private void Attack()
@@ -263,7 +367,7 @@ public class PlayerController : MonoBehaviour
             
         }
     }
-    //중력 세팅
+    //중력 스케일 세팅
     public void SetGravityScale(float gravityScale)
     {
         rb.gravityScale = gravityScale;
@@ -282,7 +386,7 @@ public class PlayerController : MonoBehaviour
         //y축 이동 감지
         fsm.conditions.moveDirection.y = (velocity.y > sensitivity ? 1 : 0) + (velocity.y < -sensitivity ? -1 : 0);
         //대쉬 감지
-        fsm.conditions.isDashing = isDashing;
+        fsm.conditions.isDashing = IsDashing;
         //공격 감지
         fsm.conditions.isAttacked = isAttacked;
         //피격 감지
@@ -301,6 +405,43 @@ public class PlayerController : MonoBehaviour
     public void Die()
     {
 
+    }
+    private void CheckDirectionToFace(bool isMovingRight)
+    {
+        if (isMovingRight != IsFacingRight)
+            Flip();
+    }
+    //점프 조건
+    private bool CanJump()
+    {
+        return LastPressedJumpTime > 0 && !IsJumping;
+    }
+    //이중 점프 조건
+    private bool CanJumpCut()
+    {
+        return IsJumping && rb.velocity.y > 0;
+    }
+    //벽 점프 컷 조건
+    private bool CanWallJumpCut()
+    {
+        return isWallJumping && rb.velocity.y > 0;
+    }
+    //대쉬 조건
+    private bool CanDash()
+    {
+        if(!IsDashing && dashesCount < Data.dashAmount && LastOnGroundTime > 0 && !dashRefilling)
+        {
+            StartCoroutine(nameof(RefillDash), 1);
+        }
+        return dashesCount > 0;
+    }
+    //벽 슬라이드 조건
+    private bool CanSlide()
+    {
+        if (LastOnWallTime > 0 && !IsJumping && !IsWallJumping && !IsDashing && LastOnGroundTime <=0)
+            return true;
+        else
+            return false;
     }
     private void OnDrawGizmosSelected()
     {
