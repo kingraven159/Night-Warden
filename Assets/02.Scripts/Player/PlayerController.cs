@@ -24,9 +24,6 @@ public class PlayerController : MonoBehaviour
     public float LastOnWallRightTime { get; private set; }
     public float LastOnWallLeftTime { get; private set; }
 
-    [Header("Movement")]
-    [SerializeField] private float moveSpeed = 5.0f;
-
     [Header("GroundCheck")]
     [SerializeField] private Transform groundCheck;
     [SerializeField] private float groundCheckRadius = 0.2f;
@@ -129,19 +126,22 @@ public class PlayerController : MonoBehaviour
 
         if (!IsDashing && !IsJumping)
         {
+            //바닥체크
             if (isGrounded)
             {
                 if(LastOnGroundTime < -0.1f)
                 {
-                    isFalling = false;
+                    isGrounded = true;
                 }
                 LastOnGroundTime = Data.coyoteTime;
             }
-            if((IsAttachedWall && IsFacingRight)
-                || (IsAttachedWall && IsFacingRight) && IsWallJumping)
+            //오른쪽 벽 체크
+            if (((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight) ||
+                (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight)) && !IsWallJumping)
                 LastOnWallRightTime = Data.coyoteTime;
-            if((IsAttachedWall && IsFacingRight)
-                || (IsAttachedWall && IsFacingRight) && IsWallJumping)
+            //왼쪽 벽 체크
+            if(((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight) || 
+                (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight)) && !IsWallJumping)
                 LastOnWallLeftTime = Data.coyoteTime;
 
             LastOnWallTime = Mathf.Max(LastOnWallLeftTime, LastOnWallRightTime);
@@ -149,12 +149,17 @@ public class PlayerController : MonoBehaviour
         if(IsJumping && rb.velocity.y <0)
         {
             IsJumping = false;
-
             isFalling = true;
         }
         if(IsWallJumping && Time.time - wallJumpStartTime > Data.wallJumpTime)
         {
             IsWallJumping = false;
+        }
+
+        if(LastOnGroundTime> 0 && !IsJumping && !IsWallJumping)
+        {
+            isJumpCut = false;
+            isFalling = false;
         }
 
         if(!IsDashing)
@@ -181,7 +186,7 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        if (CanDash() && LastOnGroundTime > 0)
+        if (CanDash() && LastPressedDashTime > 0)
         {
             Freeze(Data.dashFreezeTime);
 
@@ -220,6 +225,7 @@ public class PlayerController : MonoBehaviour
             else if (isJumpCut)
             {
                 SetGravityScale(Data.gravityScale * Data.jumpCutGravityMult);
+                rb.velocity = new Vector2(rb.velocity.x, Mathf.Max(rb.velocity.y, -Data.maxFastFallSpeed));
             }
             else if ((IsJumping || IsWallJumping || isFalling) && Mathf.Abs(rb.velocity.y) < Data.jumpHangTimeThreshold)
             {
@@ -250,11 +256,6 @@ public class PlayerController : MonoBehaviour
         //벽 판정
         IsAttachedWall = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
 
-        //점프를 하지 않고 바닥에 붙어있을시 코요테 타임
-        if(!IsJumping && isGrounded)  
-            LastOnGroundTime = Data.coyoteTime;        
-        if (IsAttachedWall)
-            LastOnGroundTime = Data.coyoteTime;
 
         if (!IsDashing)
         {
@@ -262,13 +263,14 @@ public class PlayerController : MonoBehaviour
             if (IsWallJumping)
                 Run(Data.wallJumpRunLerp);
             else
-                Run(1);
+                Run(1f);
         }
         else if (isDashAttacking)
         {
             Run(Data.dashEndRunLerp);
         }
-            //벽 슬라이딩 
+
+        //벽 슬라이딩 
         if (IsSliding)
             Slide();
         
@@ -277,31 +279,27 @@ public class PlayerController : MonoBehaviour
         Attack();
     }
     //좌우 반전
-    private void Flip()
+    private void Turn()
     {
-        if(moveInput.x != 0)
-        {
-            if(moveInput.x < 0)
-            {
-                spriteRenderer.flipX = true;
-            }
-            else
-            {
-                spriteRenderer.flipX=false;
-            }
-        }
+        Vector3 scale = transform.localScale;
+        scale.x *= -1;
+        transform.localScale = scale;
+
+        IsFacingRight = !IsFacingRight;
     }
     //이동
     private void Run(float lerpAmount)
     {
         //이동속도
-        float runSpeed = moveSpeed * Data.runMaxSpeed;
+        float runSpeed = moveInput.x * Data.runMaxSpeed;
+        Debug.Log("moveInput.x : " + moveInput.x);
+        Debug.Log("Data.runMaxSpeed : " + Data.runMaxSpeed);
         //이독속도 스케일
         runSpeed = Mathf.Lerp(rb.velocity.x, runSpeed, lerpAmount);
         //가속도 딜레이
         float accelRate;
 
-        //지상에 있을때
+        //가속도 결정
         if (LastOnGroundTime > 0)
             //이동속도가 0.01f 보다 빠를때 가속하고 아니면 감속
             accelRate = (Mathf.Abs(runSpeed) > 0.01f) ? Data.runAccelAmount : Data.runDeccelAmount;
@@ -309,13 +307,13 @@ public class PlayerController : MonoBehaviour
             //이동속도가 0.01f 보다 빠를때 가속하고 아니면 감속 
             accelRate = (Mathf.Abs(runSpeed) > 0.01f) ? Data.runAccelAmount * Data.accelInAir : Data.runDeccelAmount * Data.deccelInAir;
         
-        //점프나 추락중일때 
+        //점프 중 가속도 조정
         if((IsJumping || IsWallJumping || isFalling) && Mathf.Abs(rb.velocity.y) < Data.jumpHangTimeThreshold)
         {
             accelRate *= Data.jumpHangAccelerationMult;
             runSpeed *= Data.jumpHangMaxSpeedMult;
         }
-
+        //관성 유지 처리
         if(Data.doConserveMomantum && Mathf.Abs(rb.velocity.x) > Mathf.Abs(runSpeed) && Mathf.Sign(rb.velocity.x) == Mathf.Sign(runSpeed) && Mathf.Abs(runSpeed) > 0.01f && LastOnGroundTime < 0)
         {
             accelRate = 0;
@@ -323,8 +321,9 @@ public class PlayerController : MonoBehaviour
 
         float speedDif = runSpeed - rb.velocity.x;
         float movement = speedDif * accelRate;
+        Debug.Log("movement : " + movement);
 
-        rb.AddForce(movement * Vector2.right, ForceMode2D.Impulse);
+        rb.AddForce(movement * Vector2.right, ForceMode2D.Force);
 
     }
     //점프 인풋
@@ -459,9 +458,8 @@ public class PlayerController : MonoBehaviour
     private void Slide()
     {
         // y축 속도가 0보다 크면 
-        if(rb.velocity.y >0)
+        if(rb.velocity.y > 0)
         {
-            // 
             rb.AddForce(rb.velocity.y * Vector2.up, ForceMode2D.Impulse);
         }
 
@@ -535,7 +533,7 @@ public class PlayerController : MonoBehaviour
     private void CheckDirectionToFace(bool isMovingRight)
     {
         if (isMovingRight != IsFacingRight)
-            Flip();
+            Turn();
     }
     //점프 조건
     private bool CanJump()

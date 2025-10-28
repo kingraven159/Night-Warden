@@ -92,7 +92,7 @@ public class PlayerData : ScriptableObject
     //Unity Callback, called when the inspector updates
     private void OnValidate()
     {
-        //중력 힘을 계산 (중력 힘 = 2 * 점프 높이 / 점프 최고점까지의 시간^2)
+        //중력 힘을 계산 -(중력 힘 = 2 * 점프 높이) / (점프 최고점까지의 시간^2)
         gravityStrength = -(2 * jumpHeight) / (jumpTimeToApex * jumpTimeToApex);
 
         //중력 스케일을 계산 ( 중력 스케일 = 중력 힘 / 물리 중력값)
@@ -100,13 +100,13 @@ public class PlayerData : ScriptableObject
 
         //달리기 가속도의 증감속도를 계산 (가속도 = 50* 가속도/ 최고속도)
         runAccelAmount = (50 * runAcceleration) / runMaxSpeed;
-        runDeccelAmount = (50 * runDeccelAmount) / runMaxSpeed;
+        runDeccelAmount = (50 * runDecceleration) / runMaxSpeed;
 
         //점프 힘을 계산 (점프 힘 = 중력 힘 * 점프 최고점까지의 시간
         jumpForce = Mathf.Abs(gravityStrength) * jumpTimeToApex;
 
         //달리기 가속도 증감
         runAcceleration = Mathf.Clamp(runAcceleration, 0.01f, runMaxSpeed);
-        runDecceleration = Mathf.Clamp(runDeccelAmount, 0.01f, runMaxSpeed);
+        runDecceleration = Mathf.Clamp(runDecceleration, 0.01f, runMaxSpeed);
     }
 }
