@@ -3,9 +3,18 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using System;
+using Unity.VisualScripting;
 
 public class PlayerController : MonoBehaviour
 {
+    public PlayerData Data;
+
+    //타이머
+    public float LastOnGroundTime {  get; private set; }
+    public float LastOnWallTime { get; private set; }
+    public float LastOnWallRightTime { get; private set; }
+    public float LastOnWallLeftTime { get; private set; }
+
     [Header("Movement")]
     [SerializeField] private float moveSpeed = 5.0f;
     [SerializeField] private float jumpForce = 7.0f;
@@ -17,11 +26,12 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private LayerMask groundLayer;
 
     [Header("WallCheck")]
-    [SerializeField] private Transform wallCheck;
+    [SerializeField] private Transform frontWallCheckPoint;
+    [SerializeField] private Transform backWallCheckPoint;
     [SerializeField] private Vector2 wallCheckSize = new Vector2(0.5f, 1f);
 
     [Header("Dash")]
-    [SerializeField] private float dashPower = 5.0f;
+    [SerializeField] private float dashPower = 10.0f;
     [SerializeField] private float dashingTime = 0.2f;
     [SerializeField] private float dashCoolDown = 1f;
 
@@ -29,21 +39,31 @@ public class PlayerController : MonoBehaviour
     private float inputX;
     private float inputY;
     private bool isGrounded;
+
+    //점프 관련
+    private bool isFalling;
     private bool jumpPressed;
-    private bool isWalled;
+    private bool isJumping;
+
+    //벽점프 관련
+    private float wallJumpStartTime;
+    private bool isWallJumping;
+    private bool isSilding;
+    private bool isFacingRight;
 
     //대쉬 관련
     public bool unLockedDash;
     private bool isAbleDash = true;
     private bool isDashing;
 
+    //전투 관련
+    private bool isDamaged;
+    private bool isAttacked;
+
     AnimationFSM.FSM fsm = new AnimationFSM.FSM();
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
     private Animator anim;
-
-    private bool isDamaged;
-    private bool isAttacked;
 
     private void Awake()
     {
@@ -52,6 +72,7 @@ public class PlayerController : MonoBehaviour
         spriteRenderer = GetComponent<SpriteRenderer>();
         anim = GetComponent<Animator>();
 
+        //애니메이션 스테이트
         fsm.AddState(new AnimationFSM.Attack1State("Attack1State"));
         fsm.AddState(new AnimationFSM.Attack2State("Attack2State"));
         fsm.AddState(new AnimationFSM.Attack3State("Attack3State"));
@@ -61,6 +82,12 @@ public class PlayerController : MonoBehaviour
         fsm.AddState(new AnimationFSM.DashState("DashState"));
         fsm.AddState(new AnimationFSM.SlideState("SlideState"));
         fsm.AddState(new AnimationFSM.IdleState("IdleState"));
+    }
+    private void Start()
+    {
+        //중력 값 세팅
+        SetGravityScale(Data.gravityScale);
+        isFacingRight = true;
     }
     private void Update()
     {
@@ -80,8 +107,24 @@ public class PlayerController : MonoBehaviour
     {
         //바닥 판정
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
+        //벽 판정
+        isFacingRight = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
 
-        Move();
+        //코요테 타임
+        if(!isJumping && isGrounded)  
+            LastOnGroundTime = Data.coyoteTime;        
+        if (isFacingRight)
+            LastOnGroundTime = Data.coyoteTime;
+
+
+        if (isWallJumping)
+            Run(Data.wallJumpRunLerp);      
+        else
+            Run(1);
+
+        if (inSliding)
+            Slide();
+
         Flip();
         Attack();
     }
@@ -101,9 +144,19 @@ public class PlayerController : MonoBehaviour
         }
     }
     //이동
-    private void Move()
+    private void Run(float lerpAmount)
     {
-        rb.velocity = new Vector2(inputX * moveSpeed , rb.velocity.y);
+        float runSpeed = moveSpeed * Data.runMaxSpeed;
+
+        runSpeed = Mathf.Lerp(rb.velocity.x, runSpeed, lerpAmount);
+
+        float accelRate;
+
+        if (LastOnGroundTime > 0)
+        {
+            accelRate = (Mathf.Abs(runSpeed) > 0.0f) ? Data.run
+        }
+
 
     }
     //점프
@@ -111,9 +164,15 @@ public class PlayerController : MonoBehaviour
     {
         if(jumpPressed && isGrounded)
         {
+            isJumping = true;
             rb.velocity = new Vector2(rb.velocity.x, jumpForce);
         }
         jumpPressed = false;
+        isJumping=false;
+    }
+    private void WallJump(int dir)
+    {
+        
     }
     //적과 충돌 판정
     private void OnCollisionEnter2D(Collision2D collision)
@@ -124,9 +183,10 @@ public class PlayerController : MonoBehaviour
             OnDamaged(collision.transform.position);
         }
     }
-    //피격시 무적판정
+    //피격시 밀쳐짐 & 무적판정
     private void OnDamaged(Vector2 targetPos)
     {
+        isDamaged = true;
         //플레이어의 Layer를 변경
         gameObject.layer = 8;
 
@@ -147,6 +207,7 @@ public class PlayerController : MonoBehaviour
         gameObject.layer = 7;
         //색상 원상 복구
         spriteRenderer.color = new Color(1, 1, 1, 1f);
+        isDamaged = false;
     }
     //대쉬 입력
     private void OnDash()
@@ -188,6 +249,11 @@ public class PlayerController : MonoBehaviour
 
         Debug.Log("Dash Cool Time Finished");
     }
+    //슬라이드
+    private void Silde()
+    {
+
+    }
     //공격
     private void Attack()
     {
@@ -197,7 +263,12 @@ public class PlayerController : MonoBehaviour
             
         }
     }
-    //애니메이션
+    //중력 세팅
+    public void SetGravityScale(float gravityScale)
+    {
+        rb.gravityScale = gravityScale;
+    }
+    //애니메이션 컨티션 값 입력
     private void AnimationCondtion()
     {
         var animatorState = anim.GetCurrentAnimatorStateInfo(0);
@@ -214,6 +285,8 @@ public class PlayerController : MonoBehaviour
         fsm.conditions.isDashing = isDashing;
         //공격 감지
         fsm.conditions.isAttacked = isAttacked;
+        //피격 감지
+        fsm.conditions.isDamaged = isDamaged;
 
         fsm.Update();
 
@@ -228,5 +301,14 @@ public class PlayerController : MonoBehaviour
     public void Die()
     {
 
+    }
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.blue;
+        Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireCube(frontWallCheckPoint.position, wallCheckSize);
+        Gizmos.DrawWireCube(backWallCheckPoint.position, wallCheckSize);
     }
 }

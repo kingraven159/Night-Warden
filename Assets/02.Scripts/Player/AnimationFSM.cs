@@ -27,6 +27,22 @@ namespace AnimationFSM
             return conditions.isAttacked;
         }
     }
+    public class AttackUpState : State
+    {
+        public AttackUpState(string animationName) : base(animationName) { }
+        public override bool IsMatchingCondtions(Conditions conditions)
+        {
+            throw new NotImplementedException();
+        }   
+    }
+    public class AttackDownState : State
+    {
+        public AttackDownState(string animationName) : base(animationName) { }
+        public override bool IsMatchingCondtions(Conditions conditions)
+        {
+            throw new NotImplementedException();
+        }
+    }
     public class FallState : State
     {
         public FallState(string animationName) : base(animationName) { }
@@ -49,7 +65,7 @@ namespace AnimationFSM
         public RunState(string animationName) : base(animationName) { }
         public override bool IsMatchingCondtions(Conditions conditions)
         {
-            return conditions.moveDirection.x != 0;
+            return conditions.moveDirection.x != 0  && !conditions.isDashing;
         }
     }
     public class DashState : State

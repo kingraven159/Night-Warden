@@ -16,6 +16,7 @@ namespace AnimationFSM
         public bool isFighting;
         public int numOfAttack;
         public bool isDashing;
+        public bool isDamaged;
 
     }
     public abstract class State
