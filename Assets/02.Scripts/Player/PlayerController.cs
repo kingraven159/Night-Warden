@@ -139,10 +139,12 @@ public class PlayerController : MonoBehaviour
             if (((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight) ||
                 (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight)) && !IsWallJumping)
                 LastOnWallRightTime = Data.coyoteTime;
+            Debug.Log("코요테 타임");
             //왼쪽 벽 체크
             if(((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight) || 
                 (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight)) && !IsWallJumping)
                 LastOnWallLeftTime = Data.coyoteTime;
+            Debug.Log("코요테 타임");
 
             LastOnWallTime = Mathf.Max(LastOnWallLeftTime, LastOnWallRightTime);
         }
@@ -164,7 +166,7 @@ public class PlayerController : MonoBehaviour
 
         if(!IsDashing)
         {
-            if(CanJump() && LastOnGroundTime > 0)
+            if(CanJump() && LastPressedJumpTime > 0)
             {
                 IsJumping = true;
                 IsWallJumping = false;
@@ -172,7 +174,7 @@ public class PlayerController : MonoBehaviour
                 isFalling = false;
                 Jump();
             }
-            else if(CanWallJump() && LastOnGroundTime > 0)
+            else if(CanWallJump() && LastPressedJumpTime > 0)
             {
                 IsWallJumping = true;
                 IsJumping = false;
@@ -358,12 +360,28 @@ public class PlayerController : MonoBehaviour
         IsJumping = true;
         rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
         
-        IsJumping=false;
+        //IsJumping=false;
     }
     //벽 점프
     private void WallJump(int dir)
     {
-        
+        LastPressedJumpTime = 0;
+        LastOnGroundTime = 0;
+        LastOnWallRightTime = 0;
+        LastOnWallLeftTime = 0;
+
+
+        Vector2 vel = rb.velocity;
+        if (Mathf.Sign(vel.x) != dir) vel.x = 0;
+        if (vel.y < 0) vel.y = 0;
+        rb.velocity = vel;
+
+        Vector2 force = new Vector2(Data.wallJumpForce.x, Data.wallJumpForce.y);
+        force.x *= dir;
+
+        IsWallJumping = true;
+        rb.AddForce(force, ForceMode2D.Impulse);
+       // IsWallJumping = false;
     }
     //적과 충돌 판정
     private void OnCollisionEnter2D(Collision2D collision)
@@ -478,6 +496,7 @@ public class PlayerController : MonoBehaviour
             isAttacked = true;
             
         }
+        isAttacked = false;
     }
     //중력 스케일 세팅
     private void SetGravityScale(float gravityScale)
@@ -543,8 +562,7 @@ public class PlayerController : MonoBehaviour
     //벽 점프
     private bool CanWallJump()
     {
-        return LastPressedJumpTime > 0 && LastOnWallTime > 0 && LastOnGroundTime <= 0 && (!IsWallJumping || 
-            (LastOnWallRightTime > 0 && lastWallJumpDir == 1) || (LastOnWallLeftTime > 0 && lastWallJumpDir == -1));
+        return LastPressedJumpTime > 0 && LastOnWallTime > 0 && LastOnGroundTime <= 0 && !IsJumping && !IsSliding;
     }
     //이중 점프 조건
     private bool CanJumpCut()

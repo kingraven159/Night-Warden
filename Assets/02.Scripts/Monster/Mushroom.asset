@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 55d91b965708f2d479e0d37d1582a68f, type: 3}
-  m_Name: Normal
+  m_Name: Mushroom
   m_EditorClassIdentifier: 
-  monsterName: Normal
+  monsterName: Mushroom
   hp: 9
   damage: 1
   sightRange: 10

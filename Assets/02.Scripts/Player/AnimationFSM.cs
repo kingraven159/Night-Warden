@@ -32,7 +32,7 @@ namespace AnimationFSM
         public AttackUpState(string animationName) : base(animationName) { }
         public override bool IsMatchingCondtions(Conditions conditions)
         {
-            throw new NotImplementedException();
+            return conditions.isAttacked && conditions.moveDirection.y == 1;
         }   
     }
     public class AttackDownState : State
@@ -40,7 +40,7 @@ namespace AnimationFSM
         public AttackDownState(string animationName) : base(animationName) { }
         public override bool IsMatchingCondtions(Conditions conditions)
         {
-            throw new NotImplementedException();
+            return conditions.isAttacked && conditions.moveDirection.y == -1;
         }
     }
     public class FallState : State
