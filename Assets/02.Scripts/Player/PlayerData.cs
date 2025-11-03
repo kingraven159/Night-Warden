@@ -37,9 +37,10 @@ public class PlayerData : ScriptableObject
     [HideInInspector] public float jumpForce; //점프 힘
 
     [Header("Double Jump")]
-    public float jumpCutGravityMult;                      //추락으로 인해 중력이 증가할 때 점프시 중력을 초기화
-    [Range(0f, 1f)] public float jumpHangGravityMult; //점프 
-    public float jumpHangTimeThreshold;               //점프 한계점
+    public int jumpCount;                              //점프 횟수
+    public float jumpCutGravityMult;                   //추락으로 인해 중력이 증가할 때 점프시 중력을 초기화
+    [Range(0f, 1f)] public float jumpHangGravityMult;  //점프 
+    public float jumpHangTimeThreshold;                //점프 최고점에서의 체공효과
     [Space(5)]
     public float jumpHangAccelerationMult;            //
     public float jumpHangMaxSpeedMult;
@@ -83,10 +84,19 @@ public class PlayerData : ScriptableObject
     [Space(5)]
     [Range(0.01f, 0.5f)] public float dashIputBufferTime; //대쉬 인풋에 딜레이 시간
 
+    [Space(20)]
+
+    [Header("Attack")]
+    [Range(0, 1f)] public float attackInputBufferTime;  // 공격 딜레이
+    public float attackRange;                 //공격 사거리
+    public int AttackCombo;                   //공격 콤보 횟수
+    public float comdoResetTime;              //콤보 리셋 타임
+
     [Header("Stats")]
     public int maxHp = 5;        //최대 체력
     public int currentHp = 5;    //현재체력
     public int overShield = 0;   //오버 쉴드
+    public int maxAtk = 21;      //최대 공격력
     public int atk = 3;          //공격력
 
     //Unity Callback, called when the inspector updates
@@ -108,5 +118,12 @@ public class PlayerData : ScriptableObject
         //달리기 가속도 증감
         runAcceleration = Mathf.Clamp(runAcceleration, 0.01f, runMaxSpeed);
         runDecceleration = Mathf.Clamp(runDecceleration, 0.01f, runMaxSpeed);
+
+        //체력 최대 값 안전코드
+        if (currentHp > maxHp)
+            currentHp = maxHp;
+        //공격력 최대 값 안전코드
+        if(atk > maxAtk)
+            atk = maxAtk;
     }
 }

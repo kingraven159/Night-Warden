@@ -12,23 +12,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fed9e06f24d828244a7ec5386371b1a8, type: 3}
   m_Name: Player Data
   m_EditorClassIdentifier: 
-  gravityStrength: -17.777779
-  gravityScale: 1.8122097
+  gravityStrength: -24
+  gravityScale: 2.4464831
   fallGravityMult: 3
   maxFallSpeed: 10
   fastFallGravityMult: 6
   maxFastFallSpeed: 20
-  runMaxSpeed: 10
+  runMaxSpeed: 5
   runAcceleration: 2
-  runAccelAmount: 10
+  runAccelAmount: 20
   runDecceleration: 2
-  runDeccelAmount: 10
+  runDeccelAmount: 20
   accelInAir: 1
   deccelInAir: 1
   doConserveMomantum: 1
-  jumpHeight: 5
-  jumpTimeToApex: 0.75
-  jumpForce: 13.333334
+  jumpHeight: 3
+  jumpTimeToApex: 0.5
+  jumpForce: 12
+  jumpCount: 2
   jumpCutGravityMult: 1
   jumpHangGravityMult: 1
   jumpHangTimeThreshold: 0.5
@@ -37,21 +38,26 @@ MonoBehaviour:
   wallJumpForce: {x: 0, y: 0}
   wallJumpRunLerp: 0.25
   wallJumpTime: 0.25
-  doTurnOnWallJump: 0
+  doTurnOnWallJump: 1
   slideSpeed: -10
   slideAccel: 10
-  coyoteTime: 0.15
+  coyoteTime: 0.5
   jumpInputBufferTime: 0.2
   dashAmount: 1
   dashSpeed: 20
   dashFreezeTime: 0
   dashAttackTime: 0.1
-  dashEndTime: 0.25
+  dashEndTime: 0.5
   dashEndSpeed: {x: 10, y: 0}
-  dashEndRunLerp: 0.15
+  dashEndRunLerp: 0.5
   dashRefillTime: 1
   dashIputBufferTime: 0.2
+  attackInputBufferTime: 0.1
+  attackRange: 0
+  AttackCombo: 2
+  comdoResetTime: 4
   maxHp: 5
   currentHp: 5
   overShield: 0
+  maxAtk: 21
   atk: 3

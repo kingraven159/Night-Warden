@@ -23,6 +23,7 @@ public class PlayerController : MonoBehaviour
     public float LastOnWallTime { get; private set; }
     public float LastOnWallRightTime { get; private set; }
     public float LastOnWallLeftTime { get; private set; }
+    public float comboTimer { get; private set; }
 
     [Header("GroundCheck")]
     [SerializeField] private Transform groundCheck;
@@ -37,12 +38,14 @@ public class PlayerController : MonoBehaviour
     //마지막에 입력한 시간
     public float LastPressedJumpTime { get; private set; }
     public float LastPressedDashTime { get; private set; }  
+    public float LastPressedAttackTime { get; private set; }
 
     //이동 관련
     private Vector2 moveInput;
     private bool isGrounded;
 
     //점프 관련
+    private int curJumpCount;
     private bool isFalling;
     private bool isJumpCut;
 
@@ -51,7 +54,6 @@ public class PlayerController : MonoBehaviour
     private int lastWallJumpDir;
 
     //대쉬 관련
-    public bool unLockedDash;
     private int dashesCount;
     private bool dashRefilling;
     private Vector2 lastDashDir;
@@ -60,8 +62,10 @@ public class PlayerController : MonoBehaviour
     //전투 관련
     private bool isDamaged;
     private bool isAttacked;
+    private int currentAttackIndex = 0;
+    private float comboResetTime = 10;
 
-    AnimationFSM.FSM fsm = new AnimationFSM.FSM();
+    AnimationFSM.FSM fsm = new();
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
     private Animator anim;
@@ -74,14 +78,22 @@ public class PlayerController : MonoBehaviour
         anim = GetComponent<Animator>();
 
         //애니메이션 스테이트
+        fsm.AddState(new AnimationFSM.DieState("DieState"));
+        fsm.AddState(new AnimationFSM.HurtState("HurtState"));
         fsm.AddState(new AnimationFSM.Attack1State("Attack1State"));
         fsm.AddState(new AnimationFSM.Attack2State("Attack2State"));
         fsm.AddState(new AnimationFSM.Attack3State("Attack3State"));
-        fsm.AddState(new AnimationFSM.JumpState("JumpState"));
+        fsm.AddState(new AnimationFSM.AttackUpState("AttackUpState"));
+        fsm.AddState(new AnimationFSM.AttackDownState("AttackDownState"));
+        fsm.AddState(new AnimationFSM.AttackRunState("AttackRunState"));
+        fsm.AddState(new AnimationFSM.WallSlideState("WallSlideState"));
         fsm.AddState(new AnimationFSM.FallState("FallState"));
+        fsm.AddState(new AnimationFSM.JumpState("JumpState"));
         fsm.AddState(new AnimationFSM.RunState("RunState"));
+        fsm.AddState(new AnimationFSM.Run2State("Run2State"));
         fsm.AddState(new AnimationFSM.DashState("DashState"));
         fsm.AddState(new AnimationFSM.SlideState("SlideState"));
+        fsm.AddState(new AnimationFSM.SwordIdleState("SwordIdleState"));
         fsm.AddState(new AnimationFSM.IdleState("IdleState"));
     }
     private void Start()
@@ -89,6 +101,7 @@ public class PlayerController : MonoBehaviour
         //중력 값 세팅
         SetGravityScale(Data.gravityScale);
         IsFacingRight = true;
+        curJumpCount = Data.jumpCount;
     }
     private void Update()
     {
@@ -100,52 +113,69 @@ public class PlayerController : MonoBehaviour
 
         LastPressedJumpTime -= Time.deltaTime;
         LastPressedDashTime -= Time.deltaTime;
+        LastPressedAttackTime -= Time.deltaTime;
 
-
+        //이동 입력
         moveInput.x = Input.GetAxisRaw("Horizontal");
         moveInput.y = Input.GetAxisRaw("Vertical");
-
+        
+        //좌우 반전
         if (moveInput.x != 0)
             CheckDirectionToFace(moveInput.x > 0);
-
-        //점프
-        if(Input.GetButtonDown("Jump"))
+        //Input
+        if (!isDamaged)
         {
-            OnJumpInput();
+            //점프
+            if (Input.GetButtonDown("Jump"))
+            {
+                OnJumpInput();
+            }
+            //이중 점프
+            if (Input.GetButtonUp("Jump"))
+            {
+                OnJumpUpInput();
+            }
+            //대쉬 공격
+            if(Input.GetKeyDown(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.K))
+            {
+                OnDashInput();
+                DashAttack();
+            }
+            //대쉬
+            else if (Input.GetKeyDown(KeyCode.LeftShift))
+            {
+                OnDashInput();
+            }
+            //공격
+            else if (Input.GetKeyDown(KeyCode.K))
+            {
+                OnAttackInput();
+            }
         }
-        //높이 조절
-        if(Input.GetButtonUp("Jump"))
-        {
-            OnJumpUpInput();
-        }
-        //대쉬
-        if (Input.GetKeyDown(KeyCode.LeftShift))
-        {
-            OnDashInput();
-        }
-
         if (!IsDashing && !IsJumping)
         {
-            //바닥체크
+            //바닥에 있을때 점프와 코요테 타임 리셋
             if (isGrounded)
             {
-                if(LastOnGroundTime < -0.1f)
-                {
-                    isGrounded = true;
-                }
+                curJumpCount = Data.jumpCount;
                 LastOnGroundTime = Data.coyoteTime;
             }
+
             //오른쪽 벽 체크
             if (((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight) ||
                 (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight)) && !IsWallJumping)
+            {
                 LastOnWallRightTime = Data.coyoteTime;
-            Debug.Log("코요테 타임");
+                Debug.Log("오른벽 코요테" + LastOnWallRightTime);
+            }
             //왼쪽 벽 체크
-            if(((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight) || 
+            if (((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight) ||
                 (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight)) && !IsWallJumping)
+            {
                 LastOnWallLeftTime = Data.coyoteTime;
-            Debug.Log("코요테 타임");
-
+                Debug.Log("왼벽 코요테" + LastOnWallLeftTime);
+            }
+            //벽 체크
             LastOnWallTime = Mathf.Max(LastOnWallLeftTime, LastOnWallRightTime);
         }
         if(IsJumping && rb.velocity.y <0)
@@ -206,7 +236,10 @@ public class PlayerController : MonoBehaviour
         }
 
         if (CanSlide() && ((LastOnWallLeftTime > 0 && moveInput.x < 0) || (LastOnWallRightTime > 0 && moveInput.x > 0)))
+        {
             IsSliding = true;
+            curJumpCount = Data.jumpCount;
+        }
         else
             IsSliding = false;
 
@@ -249,7 +282,17 @@ public class PlayerController : MonoBehaviour
             SetGravityScale(0);
         }
 
-        AnimationCondtion();
+        if (comboTimer > 0)
+            comboTimer -= Time.deltaTime;
+        else
+            OnComboEnd();
+
+        if(Data.currentHp <= 0)
+        {
+            Died();
+        }
+
+        UpdateConditions();
     }
     private void FixedUpdate()
     {
@@ -258,8 +301,8 @@ public class PlayerController : MonoBehaviour
         //벽 판정
         IsAttachedWall = Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) || Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer);
 
-
-        if (!IsDashing)
+        //대쉬 이동, 피격시 이동 제한
+        if (!IsDashing && !isDamaged && !isAttacked)
         {
             //벽 점프 중일때
             if (IsWallJumping)
@@ -269,6 +312,7 @@ public class PlayerController : MonoBehaviour
         }
         else if (isDashAttacking)
         {
+            Debug.Log("대쉬공격");
             Run(Data.dashEndRunLerp);
         }
 
@@ -276,9 +320,11 @@ public class PlayerController : MonoBehaviour
         if (IsSliding)
             Slide();
         
-        
+        if(CanAttack() && LastPressedAttackTime > 0)
+        {
+            Attack();
+        }
 
-        Attack();
     }
     //좌우 반전
     private void Turn()
@@ -294,8 +340,8 @@ public class PlayerController : MonoBehaviour
     {
         //이동속도
         float runSpeed = moveInput.x * Data.runMaxSpeed;
-        Debug.Log("moveInput.x : " + moveInput.x);
-        Debug.Log("Data.runMaxSpeed : " + Data.runMaxSpeed);
+     //   Debug.Log("moveInput.x : " + moveInput.x);
+     //   Debug.Log("Data.runMaxSpeed : " + Data.runMaxSpeed);
         //이독속도 스케일
         runSpeed = Mathf.Lerp(rb.velocity.x, runSpeed, lerpAmount);
         //가속도 딜레이
@@ -323,7 +369,7 @@ public class PlayerController : MonoBehaviour
 
         float speedDif = runSpeed - rb.velocity.x;
         float movement = speedDif * accelRate;
-        Debug.Log("movement : " + movement);
+     //   Debug.Log("movement : " + movement);
 
         rb.AddForce(movement * Vector2.right, ForceMode2D.Force);
 
@@ -331,7 +377,7 @@ public class PlayerController : MonoBehaviour
     //점프 인풋
     private void OnJumpInput()
     {
-        //버퍼링 
+        //키 입력 버퍼 
         LastPressedJumpTime = Data.jumpInputBufferTime;
     }
     //이중 점프 인풋
@@ -339,18 +385,47 @@ public class PlayerController : MonoBehaviour
     {
         if (CanJumpCut() || CanWallJumpCut())
             isJumpCut = true;
+        Debug.Log("점프 컷 입력받음");
     }
     //대쉬 인풋
     private void OnDashInput()
     {
-        //버퍼링
+        //키 입력 버퍼
         LastPressedDashTime = Data.dashIputBufferTime;
     }
+    //공격 입력
+    private void OnAttackInput()
+    {
+        // 키 입력 버퍼
+        isAttacked = true;
+        LastPressedAttackTime = Data.attackInputBufferTime;
+        Debug.Log("공격 입력");
+    }
+    public void OnComboNext()
+    {
+        comboTimer = comboResetTime;
+        isAttacked = false;
+
+        if (!IsJumping && !isFalling)
+        {
+            if (currentAttackIndex <= Data.AttackCombo)
+                currentAttackIndex++;
+            else
+                currentAttackIndex = 0;
+        }
+        Debug.Log("OnComboNext 진입");
+    }
+    public void OnComboEnd()
+    {
+        currentAttackIndex = 0;
+    }   
     //점프
     private void Jump()
     {
         LastPressedJumpTime = 0;
         LastOnGroundTime = 0;
+
+        curJumpCount--;
 
         float jumpForce = Data.jumpForce;
 
@@ -359,8 +434,7 @@ public class PlayerController : MonoBehaviour
         
         IsJumping = true;
         rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
-        
-        //IsJumping=false;
+        Debug.Log("남은 점프 횟수" + curJumpCount);
     }
     //벽 점프
     private void WallJump(int dir)
@@ -381,7 +455,37 @@ public class PlayerController : MonoBehaviour
 
         IsWallJumping = true;
         rb.AddForce(force, ForceMode2D.Impulse);
-       // IsWallJumping = false;
+        curJumpCount--;
+        Debug.Log("남은 벽점프 횟수" + curJumpCount);
+    }
+    public void Attack()
+    {
+        if (CanAttack())
+        {
+            isAttacked = true;
+
+            if (comboTimer <= 0)
+            {
+                OnComboEnd();
+                Debug.Log("리셋 콤보 : " + currentAttackIndex);
+            }
+            Invoke("OnComboNext", 1f);
+            Debug.Log("현재 콤보 : " + currentAttackIndex);
+        }
+    }
+    private void DashAttack()
+    {
+        isDashAttacking = true;
+        Invoke("DashAttackEnd", 0.5f);
+    }
+    private void DashAttackEnd()
+    {
+        isDashAttacking = false;
+    }
+    //죽음
+    public void Died()
+    {
+
     }
     //적과 충돌 판정
     private void OnCollisionEnter2D(Collision2D collision)
@@ -407,7 +511,7 @@ public class PlayerController : MonoBehaviour
         rb.AddForce(new Vector2(dirc, 1) * 3, ForceMode2D.Impulse);
 
         //1초 후 무적 시간 끝
-        Invoke("OffDamaged", 1); 
+        Invoke("OffDamaged", 0.5f); 
     }
     //무적시간 끝
     private void OffDamaged()
@@ -446,8 +550,6 @@ public class PlayerController : MonoBehaviour
         startTime = Time.time;
         isDashAttacking = false;
 
-        //중력스케일 복구
-        SetGravityScale(Data.gravityScale);
         //대쉬 속도 감소
         rb.velocity = Data.dashEndSpeed * dir.normalized;
 
@@ -457,6 +559,8 @@ public class PlayerController : MonoBehaviour
             yield return null;
         }
 
+        //중력스케일 복구
+        SetGravityScale(Data.gravityScale);
         //대쉬 끝
         IsDashing = false;
 
@@ -488,16 +592,6 @@ public class PlayerController : MonoBehaviour
 
         rb.AddForce(movement * Vector2.up);
     }
-    //공격
-    private void Attack()
-    {
-        if(Input.GetKeyDown(KeyCode.K) && !isAttacked)
-        {
-            isAttacked = true;
-            
-        }
-        isAttacked = false;
-    }
     //중력 스케일 세팅
     private void SetGravityScale(float gravityScale)
     {
@@ -516,26 +610,36 @@ public class PlayerController : MonoBehaviour
         Time.timeScale = 1;
     }
     //애니메이션 컨티션 값 입력
-    private void AnimationCondtion()
+    public void UpdateConditions()
     {
         var animatorState = anim.GetCurrentAnimatorStateInfo(0);
         var velocity = rb.velocity;
         var sensitivity = 0.1f;
 
+        //죽음 감지
+        fsm.conditions.isDied = IsDied();
+        //피격 감지
+        fsm.conditions.isDamaged = isDamaged;
+        //공격 감지
+        fsm.conditions.isAttacked = isAttacked;
+        //공격 콤보
+        fsm.conditions.currentAttackIndex = currentAttackIndex;
         //바닥 감지
         fsm.conditions.isGrounded = isGrounded;
+        //벽 슬라이드 감지
+        fsm.conditions.isWalled = IsSliding;
         //x축 이동 감지
         fsm.conditions.moveDirection.x = (velocity.x > sensitivity ? 1 : 0) + (velocity.x < -sensitivity ? -1 : 0);
         //y축 이동 감지
         fsm.conditions.moveDirection.y = (velocity.y > sensitivity ? 1 : 0) + (velocity.y < -sensitivity ? -1 : 0);
         //대쉬 감지
         fsm.conditions.isDashing = IsDashing;
-        //공격 감지
-        fsm.conditions.isAttacked = isAttacked;
-        //피격 감지
-        fsm.conditions.isDamaged = isDamaged;
+        //대쉬 공격 감지
+        fsm.conditions.isDashAttacking = isDashAttacking;
+        //전투 감지
+        fsm.conditions.isFighting = IsFighting();
 
-        fsm.Update();
+        fsm.Update(anim);
 
         var fsmAnimationName = fsm.currentState.animationName;
         //디버그
@@ -545,9 +649,12 @@ public class PlayerController : MonoBehaviour
         }
     }
     //죽음
-    public void Die()
+    public bool IsDied()
     {
-
+        if (Data.currentHp <= 0)
+            return true;
+        else
+            return false;           
     }
     private void CheckDirectionToFace(bool isMovingRight)
     {
@@ -557,22 +664,23 @@ public class PlayerController : MonoBehaviour
     //점프 조건
     private bool CanJump()
     {
-        return LastPressedJumpTime > 0 && !IsJumping;
+        return (LastOnGroundTime > 0 || curJumpCount > 0);
     }
     //벽 점프
     private bool CanWallJump()
     {
-        return LastPressedJumpTime > 0 && LastOnWallTime > 0 && LastOnGroundTime <= 0 && !IsJumping && !IsSliding;
+        return LastPressedJumpTime > 0 && LastOnWallTime > 0 && LastOnGroundTime <= 0 && curJumpCount > 0 && !IsSliding && (!IsJumping || 
+            (LastOnWallRightTime > 0 && lastWallJumpDir == 1) || (LastOnWallLeftTime > 0 && lastWallJumpDir == 1));
     }
     //이중 점프 조건
     private bool CanJumpCut()
     {
-        return IsJumping && rb.velocity.y > 0;
+        return IsJumping && rb.velocity.y > 0 && curJumpCount > 0;
     }
     //벽 이중 점프 조건
     private bool CanWallJumpCut()
     {
-        return IsWallJumping && rb.velocity.y > 0;
+        return IsWallJumping && rb.velocity.y > 0 && curJumpCount > 0;
     }
     //대쉬 조건
     private bool CanDash()
@@ -590,6 +698,22 @@ public class PlayerController : MonoBehaviour
             return true;
         else
             return false;
+    }
+    //공격 조건
+    private bool CanAttack()
+    {
+        //피격 시 공격 제한
+        if (isDamaged)
+            return false;
+        else
+            return true;
+    }
+    private bool IsFighting()
+    {
+        if(comboTimer > 0 && comboTimer < 20f)
+            return true;
+
+        else return false;
     }
     private void OnDrawGizmosSelected()
     {
