@@ -15,6 +15,10 @@ public class MonsterData : ScriptableObject
     public int Damage { get { return damage; } }
     [SerializeField] private float moveSpeed;
     public float MoveSpeed { get { return moveSpeed; } }
+    [SerializeField] private float chaseSpeed;
+    public float ChaseSpeed { get { return chaseSpeed; } }
+    [SerializeField] private float attackCooldown;
+    public float AttackCooldown { get { return attackCooldown; } }
 
     [Space(20)]
     [Header("AI 범위")]
@@ -31,5 +35,10 @@ public class MonsterData : ScriptableObject
     [SerializeField] private float patrolWaitTime;
     public float PatrolWaitTime { get { return patrolWaitTime; } }
 
+    [Header("코인 설정")]
+    [SerializeField] private int dropCount;
+    public int DropCount { get { return dropCount; } }
+    [SerializeField] private GameObject coinPrefab;
+    public GameObject CoinPrefab { get { return coinPrefab; } }
     public GameObject prefab;
 }

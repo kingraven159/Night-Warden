@@ -132,7 +132,10 @@ namespace AnimationFSM
         public SwordIdleState(string animationName) : base(animationName, 0) { }
         public override bool IsMatchingConditions(Conditions conditions)
         {
-            return conditions.isFighting && !conditions.isAttacked;
+            return conditions.isGrounded &&
+                !conditions.isAttacked &&
+                conditions.isFighting &&
+                conditions.moveDirection == Vector2.zero;
         }
     }
     public class IdleState : State
@@ -143,7 +146,7 @@ namespace AnimationFSM
             return conditions.isGrounded &&
                 !conditions.isAttacked &&
                 !conditions.isFighting &&
-                conditions.moveDirection == Vector2Int.zero;
+                conditions.moveDirection == Vector2.zero;
         }
     }
 }

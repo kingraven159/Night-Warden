@@ -6,6 +6,8 @@ using System;
 using Unity.VisualScripting;
 using UnityEditor.Experimental.GraphView;
 
+
+
 public class PlayerController : MonoBehaviour
 {
     public PlayerData Data;
@@ -102,6 +104,7 @@ public class PlayerController : MonoBehaviour
         SetGravityScale(Data.gravityScale);
         IsFacingRight = true;
         curJumpCount = Data.jumpCount;
+        dashesCount = Data.dashAmount;
     }
     private void Update()
     {
@@ -118,7 +121,7 @@ public class PlayerController : MonoBehaviour
         //이동 입력
         moveInput.x = Input.GetAxisRaw("Horizontal");
         moveInput.y = Input.GetAxisRaw("Vertical");
-        
+
         //좌우 반전
         if (moveInput.x != 0)
             CheckDirectionToFace(moveInput.x > 0);
@@ -135,19 +138,13 @@ public class PlayerController : MonoBehaviour
             {
                 OnJumpUpInput();
             }
-            //대쉬 공격
-            if(Input.GetKeyDown(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.K))
-            {
-                OnDashInput();
-                DashAttack();
-            }
             //대쉬
-            else if (Input.GetKeyDown(KeyCode.LeftShift))
+            if (Input.GetKeyDown(KeyCode.LeftShift))
             {
                 OnDashInput();
             }
             //공격
-            else if (Input.GetKeyDown(KeyCode.K))
+            if (Input.GetKeyDown(KeyCode.K))
             {
                 OnAttackInput();
             }
@@ -166,14 +163,14 @@ public class PlayerController : MonoBehaviour
                 (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight)) && !IsWallJumping)
             {
                 LastOnWallRightTime = Data.coyoteTime;
-                Debug.Log("오른벽 코요테" + LastOnWallRightTime);
+                //Debug.Log("오른벽 코요테" + LastOnWallRightTime);
             }
             //왼쪽 벽 체크
             if (((Physics2D.OverlapBox(frontWallCheckPoint.position, wallCheckSize, 0, groundLayer) && !IsFacingRight) ||
                 (Physics2D.OverlapBox(backWallCheckPoint.position, wallCheckSize, 0, groundLayer) && IsFacingRight)) && !IsWallJumping)
             {
                 LastOnWallLeftTime = Data.coyoteTime;
-                Debug.Log("왼벽 코요테" + LastOnWallLeftTime);
+                //Debug.Log("왼벽 코요테" + LastOnWallLeftTime);
             }
             //벽 체크
             LastOnWallTime = Mathf.Max(LastOnWallLeftTime, LastOnWallRightTime);
@@ -268,7 +265,7 @@ public class PlayerController : MonoBehaviour
             }
             else if(rb.velocity.y < 0)
             {
-                SetGravityScale(Data.gravityScale);
+                SetGravityScale(Data.gravityScale * Data.fallGravityMult);
 
                 rb.velocity = new Vector2(rb.velocity.x, Mathf.Max(rb.velocity.y, -Data.maxFallSpeed));
             }
@@ -293,6 +290,7 @@ public class PlayerController : MonoBehaviour
         }
 
         UpdateConditions();
+        Debug.Log($"IsDashing:{IsDashing}, Gravity:{rb.gravityScale}, VelY:{rb.velocity.y}");
     }
     private void FixedUpdate()
     {
@@ -312,7 +310,7 @@ public class PlayerController : MonoBehaviour
         }
         else if (isDashAttacking)
         {
-            Debug.Log("대쉬공격");
+            //Debug.Log("대쉬공격");
             Run(Data.dashEndRunLerp);
         }
 
@@ -399,7 +397,7 @@ public class PlayerController : MonoBehaviour
         // 키 입력 버퍼
         isAttacked = true;
         LastPressedAttackTime = Data.attackInputBufferTime;
-        Debug.Log("공격 입력");
+        //Debug.Log("공격 입력");
     }
     public void OnComboNext()
     {
@@ -413,7 +411,7 @@ public class PlayerController : MonoBehaviour
             else
                 currentAttackIndex = 0;
         }
-        Debug.Log("OnComboNext 진입");
+        //Debug.Log("OnComboNext 진입");
     }
     public void OnComboEnd()
     {
@@ -467,21 +465,12 @@ public class PlayerController : MonoBehaviour
             if (comboTimer <= 0)
             {
                 OnComboEnd();
-                Debug.Log("리셋 콤보 : " + currentAttackIndex);
+               // Debug.Log("리셋 콤보 : " + currentAttackIndex);
             }
-            Invoke("OnComboNext", 1f);
-            Debug.Log("현재 콤보 : " + currentAttackIndex);
+            Invoke("OnComboNext", 0.25f);
+           // Debug.Log("현재 콤보 : " + currentAttackIndex);
         }
-    }
-    private void DashAttack()
-    {
-        isDashAttacking = true;
-        Invoke("DashAttackEnd", 0.5f);
-    }
-    private void DashAttackEnd()
-    {
-        isDashAttacking = false;
-    }
+    }  
     //죽음
     public void Died()
     {
@@ -528,8 +517,8 @@ public class PlayerController : MonoBehaviour
         LastOnGroundTime = 0;
         LastPressedDashTime = 0;
 
-        Debug.Log("Dash");
-        Debug.Log("Dash Cool Time Start");
+       // Debug.Log("Dash");
+       // Debug.Log("Dash Cool Time Start");
 
         float startTime = Time.time;
 
@@ -550,6 +539,8 @@ public class PlayerController : MonoBehaviour
         startTime = Time.time;
         isDashAttacking = false;
 
+        //중력스케일 복구
+        SetGravityScale(Data.gravityScale);
         //대쉬 속도 감소
         rb.velocity = Data.dashEndSpeed * dir.normalized;
 
@@ -558,13 +549,10 @@ public class PlayerController : MonoBehaviour
         {
             yield return null;
         }
-
-        //중력스케일 복구
-        SetGravityScale(Data.gravityScale);
         //대쉬 끝
         IsDashing = false;
 
-        Debug.Log("Dash Cool Time Finished");
+       // Debug.Log("Dash Cool Time Finished");
     }
     //대쉬 리필
     private IEnumerator RefillDash(int amount)
@@ -600,14 +588,14 @@ public class PlayerController : MonoBehaviour
     //경직
     public void Freeze(float duration)
     {
-        StartCoroutine(nameof(PerformFreeze), duration);
+        StartCoroutine(FreezeCoroutine(duration));
     }
-    //경직 코루틴
-    private IEnumerator PerformFreeze(float duration)
+
+    private IEnumerator FreezeCoroutine(float duration)
     {
-        Time.timeScale = 0;
-        yield return new WaitForSeconds(duration);
-        Time.timeScale = 1;
+        Time.timeScale = 0f;
+        yield return new WaitForSecondsRealtime(duration);
+        Time.timeScale = 1f;
     }
     //애니메이션 컨티션 값 입력
     public void UpdateConditions()
@@ -641,7 +629,7 @@ public class PlayerController : MonoBehaviour
 
         fsm.Update(anim);
 
-        var fsmAnimationName = fsm.currentState.animationName;
+        var fsmAnimationName = fsm.CurrentState.animationName;
         //디버그
         if (!animatorState.IsName(fsmAnimationName))
         {

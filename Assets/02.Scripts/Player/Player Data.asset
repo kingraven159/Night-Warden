@@ -57,7 +57,7 @@ MonoBehaviour:
   AttackCombo: 2
   comdoResetTime: 4
   maxHp: 5
-  currentHp: 5
+  currentHp: 4
   overShield: 0
   maxAtk: 21
   atk: 3

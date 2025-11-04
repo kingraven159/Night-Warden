@@ -15,7 +15,7 @@ public interface INode
 }
 public sealed class ActionNode : INode
 {
-    Func<INode.ENodeState> _onUpdate = null;
+    Func<INode.ENodeState> _onUpdate;
 
     public ActionNode(Func<INode.ENodeState> onUpdate)
     {
@@ -40,15 +40,11 @@ public sealed class SelectorNode : INode
 
         foreach (var child in _childs)
         {
-            switch (child.Evaluate())
-            {
-                case INode.ENodeState.Running:
-                    return INode.ENodeState.Running;
-                case INode.ENodeState.Success:
-                    return INode.ENodeState.Success;
-            }
+            var result = child.Evaluate();
+            if (result != INode.ENodeState.Success)
+                return result; //Running or Failure
         }
-        return INode.ENodeState.Failure;
+        return INode.ENodeState.Success;
     }
 }
 public sealed class SequenceNode : INode
@@ -66,17 +62,14 @@ public sealed class SequenceNode : INode
 
         foreach (var child in _childs)
         {
-            switch (child.Evaluate())
+            var result = child.Evaluate();
+            if(result != INode.ENodeState.Failure)
             {
-                case INode.ENodeState.Running:
-                    return INode.ENodeState.Running;
-                case INode.ENodeState.Success:
-                    continue;
-                case INode.ENodeState.Failure:
-                    return INode.ENodeState.Failure;
+                return result; //Running or Success
+
             }
-        }
-        return INode.ENodeState.Success;
+       }
+        return INode.ENodeState.Failure;
     }
 }
 

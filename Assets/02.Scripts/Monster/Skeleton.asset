@@ -13,8 +13,16 @@ MonoBehaviour:
   m_Name: Skeleton
   m_EditorClassIdentifier: 
   monsterName: Skeleton
-  hp: 15
+  maxHp: 9
   damage: 1
-  sightRange: 10
-  moveSpeed: 3
+  moveSpeed: 1.5
+  chaseSpeed: 3
+  attackCooldown: 3
+  detectionRange: 10
+  attackRange: 1
+  jumpAttackRange: 0
+  patrolRadius: 0
+  patrolWaitTime: 0
+  dropCount: 5
+  coinPrefab: {fileID: 0}
   prefab: {fileID: 0}

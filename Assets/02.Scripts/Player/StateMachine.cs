@@ -1,3 +1,4 @@
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -22,7 +23,7 @@ namespace AnimationFSM
 
         public bool IsFalling => !isGrounded && moveDirection.y < 0;
         public bool IsJumping => !isGrounded && moveDirection.y > 0;
-        public bool IsRunning => moveDirection.x != 0 && !isFighting;
+        public bool IsRunning => moveDirection.x != 0;
     }
     //각 상태의 베이스 클래스
     public abstract class State
@@ -32,7 +33,7 @@ namespace AnimationFSM
         public int priority { get; }
         protected float blendTime = 0.1f;
 
-        //이벤트 콜백
+        //콜백 이벤트
         public event Action OnEnterEvent;
         public event Action OnExitEvent;
 
@@ -79,8 +80,13 @@ namespace AnimationFSM
     public class FSM
     {
         private List<State> states = new();
-        public State currentState;
+        private State currentState;
+        private State previousState;
         public Conditions conditions;
+        public bool forcedChange;
+
+        //현재 상태 읽기 전용
+        public State CurrentState => currentState;
 
         public void AddState(State state)
         {
@@ -91,19 +97,45 @@ namespace AnimationFSM
 
         public void Update(Animator animator)
         {
-            foreach (var state in states)
+            if(!forcedChange && currentState != null)
             {
-                if (state.IsMatchingConditions(conditions))
+                currentState.OnUpdate();
+                return;
+            }
+
+            State nextState = null;
+
+            for (int i = 0; i < states.Count; i++)
+            {
+                var s = states[i];
+                if (s.IsMatchingConditions(conditions))
                 {
-                    if (currentState != state)
-                    {
-                        currentState?.OnExit();
-                        state.OnEnter(animator, currentState);
-                        currentState = state;
-                    }
+                    nextState = s;
                     break;
                 }
             }
+            if (nextState == null)
+                return;
+            if(nextState != currentState)
+            {
+                previousState = currentState;
+                currentState?.OnExit();
+                currentState = nextState;
+                currentState.OnEnter(animator, previousState);
+                forcedChange = false;
+            }
+        }
+        //상태 변경을 강제로 트리거 할때 사용
+        public void ForceTransition()
+        {
+            forcedChange = true;
+        }
+        //상태 초기화
+        public void Reset()
+        {
+            currentState = null;
+            previousState = null;
+            forcedChange = true;
         }
     }
 }
